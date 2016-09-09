@@ -2,7 +2,7 @@ import optparse
 import codecs
 
 import pycaption
-
+import os
 
 def main():
     parser = optparse.OptionParser("usage: %prog [options]")
@@ -20,6 +20,11 @@ def main():
             action='store_true',
             dest='srt',
             help="write captions in SRT format",
+            default=False,)
+    parser.add_option("--webvtt",
+            action='store_true',
+            dest='webvtt',
+            help="write captions in webvtt format",
             default=False,)
     parser.add_option("--transcript",
             action='store_true',
@@ -41,7 +46,7 @@ def main():
     except:
         raise Exception(
         ('Expected usage: python caption_converter.py <path to caption file> ',
-        '[--sami --dfxp --srt --transcript]'))
+        '[--sami --dfxp --srt --webvtt --transcript]'))
 
     try:
         captions = codecs.open(filename, encoding='utf-8', mode='r').read()
@@ -50,7 +55,18 @@ def main():
         captions = unicode(captions, errors='replace')
 
     content = read_captions(captions, options)
-    write_captions(content, options)
+    
+    # Check languages from captions file (dfxp only)
+    languages = content.get_languages()
+    output_filename = get_output_filename(filename) # Get input filename
+    if not options.lang:
+        for lang in languages:
+            write_captions(content, options, lang, output_filename)
+    elif options.lang in languages:
+        write_captions(content, options, options.lang, output_filename)
+    else:
+        print 'Not found language: "' + options.lang + '"'
+    #write_captions(content, options)
 
 
 def read_captions(captions, options):
@@ -58,6 +74,7 @@ def read_captions(captions, options):
     srt_reader = pycaption.SRTReader()
     sami_reader = pycaption.SAMIReader()
     dfxp_reader = pycaption.DFXPReader()
+    webvtt_reader = pycaption.WebVTTReader()
 
     if scc_reader.detect(captions):
         if options.lang:
@@ -71,19 +88,32 @@ def read_captions(captions, options):
         return sami_reader.read(captions)
     elif dfxp_reader.detect(captions):
         return dfxp_reader.read(captions)
+    elif webvtt_reader.detect(captions):
+        return webvtt_reader.read(captions)
     else:
         raise Exception('No caption format detected :(')
 
 
-def write_captions(content, options):
+def write_captions(content, options, lang='', filename=''):
     if options.sami:
         print pycaption.SAMIWriter().write(content).encode("utf-8")
     if options.dfxp:
         print pycaption.DFXPWriter().write(content).encode("utf-8")
+    if options.webvtt:
+        location = os.getcwd()
+        f = open(location+'/captions/'+filename+'_'+lang+'.vtt', 'w') #Save vtt files into captions folder
+        f.write(pycaption.WebVTTWriter().write(content, lang).encode("utf-8"))
+        # print pycaption.WebVTTWriter().write(content, lang).encode("utf-8")
     if options.srt:
         print pycaption.SRTWriter().write(content).encode("utf-8")
     if options.transcript:
         print pycaption.TranscriptWriter().write(content).encode("utf-8")
+
+
+def get_output_filename(filename):
+    file_input_list = filename.split('/')
+    file_input = ''.join(file_input_list[-1:])
+    return file_input.split('.')[0]
 
 
 if __name__ == '__main__':
